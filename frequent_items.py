@@ -34,9 +34,5 @@ if __name__ == '__main__':
     # Reorder the data by the patient - column Patient
     logData = logData.sortBy(lambda x: x[0]) 
 
-    # Get the frequencies of the elements in the column Code
-    freq = logData.map(lambda x: (x[1], 1)).reduceByKey(lambda a, b: a + b)
 
-    # Discard elements from column code with frequency less than 500 from logData
-    logData = logData.filter(lambda x: freq[x[1]] > 500)
 

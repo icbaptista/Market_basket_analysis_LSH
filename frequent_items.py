@@ -21,9 +21,6 @@ if __name__ == '__main__':
     # Count the number of rows
     print("Number of rows: ", logData.count())
 
-    # Show the schema
-    logData.printSchema()
-
     # Transform the data into a RDD
     logData = logData.rdd
 

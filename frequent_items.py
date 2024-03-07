@@ -24,7 +24,12 @@ if __name__ == '__main__':
     logData = sqlContext.sql("SELECT * FROM logData ORDER BY Patient")
 
     # Show the data
-    logData.show()
+    # logData.show()
+
+    # Get the frequencies of the elements in the column Code 
+    freq = logData.groupBy("Code").count()
+    freq.show()
+
 
 
 

@@ -34,5 +34,6 @@ if __name__ == '__main__':
     # Reorder the data by the patient - column Patient
     logData = logData.sortBy(lambda x: x[0]) 
 
-
+    # Save the data
+    logData.saveAsTextFile(sys.argv[2])
 

@@ -25,11 +25,15 @@ if __name__ == '__main__':
     logData = logData.rdd
 
     # Eliminate the columns that are not needed - columns START, STOP, ENCOUNTER and DESCRIPTION
-    # Only keep columns PATIENT and CODE
-    logData = logData.map(lambda x: (x[2], x[4]))
+    # Only keep columns PATIENT and CODE (of disease)
+    logData = logData.map(lambda x: (x[2], x[4])).groupBy(lambda x: x[0])
+ 
+    # Count the number of times a disease appears 
+    diseasesCount = logData.map(lambda x: (x[1], 1)).reduceByKey(lambda a,b: a+b).sortBy(lambda x: x[1], False)
 
     # Show the data
-    print(logData.take(5))
+    print("AAAAAAAAAAAAAAAAAAAAAAAA")
+    print(diseasesCount.take(5))
 
     # Reorder the data by the patient - column Patient
     logData = logData.sortBy(lambda x: x[0]) 
@@ -37,3 +41,6 @@ if __name__ == '__main__':
     # Save the data
     logData.saveAsTextFile(sys.argv[2])
 
+    # Use broadcast  
+    # frequent singletons need to be accessed by whole the workers 
+    # spark accumulators -> shared variables 

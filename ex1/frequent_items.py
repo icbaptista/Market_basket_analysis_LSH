@@ -28,7 +28,7 @@ class A_Priori:
         self.patient_diseases_baskets = self.conditions_rdd.groupBy(lambda row: row.PATIENT) \
                                                        .mapValues(lambda codes: ", ".join(set(row.CODE for row in codes))) \
                                                        .values() \
-                                                       .collect()
+                                                       .collect() 
 
     def generate_frequent_1_itemsets(self):
         """Generate frequent 1-itemsets (k = 1)."""
@@ -66,9 +66,14 @@ class A_Priori:
 
     def execute_a_priori(self):
         """Run the A-Priori algorithm to find frequent itemsets."""
+        
+        print("\n\n uwu \n\n")
         self.fetch_data()
+        print("\n\n Data Fetched \n\n")
         self.organize_data()
+        print("\n\n Data Organized \n\n")
         self.generate_frequent_1_itemsets()
+        print("\n\n Frequent Items Generated \n\n")
 
         # Run the A-Priori algorithm
         self.frequent_itemsets = self.frequent_1_itemsets
@@ -81,6 +86,8 @@ class A_Priori:
         # Print the frequent itemsets
         for itemset in self.frequent_itemsets:
             print(f"Frequent itemset: {itemset}")
+            
+        print("\n\n Frequent Items Printed \n\n")
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

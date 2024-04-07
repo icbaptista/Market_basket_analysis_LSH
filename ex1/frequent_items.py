@@ -190,42 +190,6 @@ if __name__ == '__main__':
             ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
         ])
 
-    print("\n\n Calculated Confidence for k=2 \n\n")
-    print(confidence_k2.take(10))  
-
-    # Calculate interest in one transformation
-    interest_k2 = confidence_k2.map(lambda rule: ((rule[0][0], rule[0][1]), (rule[2], 1))).reduceByKey(lambda x, y: (max(x[0], y[0]), x[1])).map(lambda x: (x[0], x[1][0] - x[1][1] / total_transactions))  # Calculating interest
-
-    # Show the results
-    print("\n\n Calculated Interest for k=2 \n\n")
-    print(interest_k2.take(10))
-
-
-    #interest_k2 = standardized_lift_k2 \
-    #    .map(lambda itemset_standardized_lift: (itemset_standardized_lift[0], itemset_standardized_lift[1], itemset_standardized_lift[2], 
-    #                                a_priori.calculate_interest(itemset_standardized_lift[2], itemset_standardized_lift[3])))
-
-    print("\n\n Calculated Interest for k=2 \n\n")
-    print(interest_k2.collect()) 
-
-    # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
-    
-    lift_k2 = confidence_k2 \
-        .map(lambda itemset_confidence: (itemset_confidence[0], itemset_confidence[1], 
-                            a_priori.calculate_lift(spark_context, freq_items_k1, itemset_confidence[2])))
-
-    print("\n\n Calculated Lift for k=2 \n\n")
-    print(lift_k2.collect()) 
-
-    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) measures the strength of the association between itemA and itemB
-    
-    standardized_lift_k2 = lift_k2 \
-        .map(lambda itemset_lift: (itemset_lift[0], itemset_lift[1], 
-                            a_priori.calculate_standardized_lift(itemset_lift[2], itemset_lift[3])))
-
-    print("\n\n Calculated Standardized Lift for k=2 \n\n")
-    print(standardized_lift_k2.collect())  
-
     # TODO: fix this and apply it for the k = 3 case 
     # Calculate confidence for k=3   
     confidence_k3 = rdd_k2.flatMap(lambda itemset: [  # (A,B,C, Prob) (B,C,A, Prob) (C,A, Prob) (C, Prob)
@@ -236,54 +200,5 @@ if __name__ == '__main__':
     print("\n\n Calculated Confidence for k=3 \n\n")
     print(confidence_k3.collect()) 
 
-    # Calculate lift for k=3
-    lift_k3 = confidence_k3 \
-        .map(lambda itemset_confidence: (itemset_confidence[0], itemset_confidence[1], 
-                            a_priori.calculate_lift(spark_context, freq_items_k2, itemset_confidence[2])))
-
-    print("\n\n Calculated Lift for k=3 \n\n")
-    print(lift_k3.collect())  
-
-    # Calculate standardized lift for k=3
-    standardized_lift_k3 = lift_k3 \
-        .map(lambda itemset_lift: (itemset_lift[0], itemset_lift[1], 
-                            a_priori.calculate_standardized_lift(itemset_lift[2], itemset_lift[3])))
-
-    print("\n\n Calculated Standardized Lift for k=3 \n\n")
-    print(standardized_lift_k3.collect())  
-
-    # Calculate interest for k=3
-    interest_k3 = standardized_lift_k3 \
-        .map(lambda itemset_standardized_lift: (itemset_standardized_lift[0], itemset_standardized_lift[1], itemset_standardized_lift[2], 
-                                    a_priori.calculate_interest(itemset_standardized_lift[2], itemset_standardized_lift[3])))
-
-    print("\n\n Calculated Interest for k=3 \n\n")
-    print(interest_k3.collect())  
-
-     # Filter rules with standardized lift > 0.2
-    filtered_rules_k2 = interest_k2.filter(lambda x: x[2] > 0.2)
-
-    # Convert filtered_rules into the format for writing association rules
-    formatted_rules_k2 = filtered_rules_k2.map(lambda x: (x[0], x[1], (x[2], x[3][0], x[3][1]), x[3][2])).collect()
-
-    # Write association rules to the text file
-    output_file = f"{a_priori.output_directory}/association_rules_k_{2}.txt"
-    with open(output_file, 'w') as file:
-        file.write("Antecedent,Consequent,Confidence,Lift,Standardized Lift,Interest\n")
-        for rule in formatted_rules_k2:
-            file.write(f"{', '.join(rule[0])},{rule[1]},{rule[2][0]},{rule[2][1]},{rule[2][2]},{rule[3]}\n")
-
-    # Filter rules with standardized lift > 0.2
-    filtered_rules_k3 = interest_k3.filter(lambda x: x[2] > 0.2)
-
-    # Convert filtered_rules into the format for writing association rules
-    formatted_rules_k3 = filtered_rules_k3.map(lambda x: (x[0], x[1], (x[2], x[3][0], x[3][1]), x[3][2])).collect()
-
-    # Write association rules to the text file
-    output_file = f"{a_priori.output_directory}/association_rules_k_{3}.txt"
-    with open(output_file, 'w') as file:
-        file.write("Antecedent,Consequent,Confidence,Lift,Standardized Lift,Interest\n")
-        for rule in formatted_rules_k3:
-            file.write(f"{', '.join(rule[0])},{rule[1]},{rule[2][0]},{rule[2][1]},{rule[2][2]},{rule[3]}\n")
         
     print("\n\n Association Rules Written \n\n")

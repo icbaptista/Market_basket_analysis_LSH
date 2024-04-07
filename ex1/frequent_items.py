@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
     # Calculate association rules for k=2
 
-    # Support (A,B): transactions containing both itemA and itemB
+    # Support (A,B): transactions containing both itemA and itemB - calculated 
     # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA
 
     # Calculate confidence for k=2, considering both directions
@@ -190,6 +190,9 @@ if __name__ == '__main__':
             ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
         ])
 
+    print("\n\n Calculated Confidence for k=2 \n\n")
+    print(confidence_k2.take(10))  
+    
     # TODO: fix this and apply it for the k = 3 case 
     # Calculate confidence for k=3   
     confidence_k3 = rdd_k2.flatMap(lambda itemset: [  # (A,B,C, Prob) (B,C,A, Prob) (C,A, Prob) (C, Prob)
@@ -197,8 +200,9 @@ if __name__ == '__main__':
             ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
         ])
     
+    
     print("\n\n Calculated Confidence for k=3 \n\n")
-    print(confidence_k3.collect()) 
+    print(confidence_k3.take(10)) 
 
         
     print("\n\n Association Rules Written \n\n")

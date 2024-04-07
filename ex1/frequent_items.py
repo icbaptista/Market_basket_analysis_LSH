@@ -2,92 +2,91 @@ from pyspark import SparkContext
 from pyspark.sql import SparkSession, SQLContext
 from itertools import combinations
 import sys
+import os
 
 # Global Spark variables
 spark_context = SparkContext(appName="FrequentItems")
 spark_session = SparkSession.builder.appName("Example").getOrCreate()
 sql_context = SQLContext(spark_session)
 
+frequent_itemsets = {}
+
 class A_Priori:
-    def __init__(self, input_file, output_directory, min_support=0.1):
+    def __init__(self, input_file, output_directory):
         self.input_file = input_file
         self.output_directory = output_directory
-        self.min_support = min_support
+        self.support_threshold = 1000
         self.conditions_rdd = None
-        self.patient_diseases_baskets = None
-        self.frequent_itemsets = []
         self.k = 1
 
-    def fetch_data(self):
-        """Load the 'conditions.csv.gz' file into a Spark RDD."""
-        self.conditions_rdd = spark_session.read.option("header", "true").csv(self.input_file).rdd
+    def fetch_data(self, percentage=5):
+        """Load a specified percentage of the 'conditions.csv.gz' file into a Spark RDD."""
+        full_rdd = spark_session.read.option("header", "true").csv(self.input_file).rdd
+        total_count = full_rdd.count()
+        sample_rdd = full_rdd.sample(False, percentage / 100.0, seed=42)
+        self.conditions_rdd = sample_rdd
+        print(f"\n\n Loaded {percentage}% of the data ({sample_rdd.count()} out of {total_count} rows)")
+        print(self.conditions_rdd.take(5))
 
-    def organize_data(self):
-        """Preprocess the data by creating a list of disease codes for each patient."""
-        # Reorganize the data to have all the disease codes for each patient in the same line
-        self.patient_diseases_baskets = self.conditions_rdd.groupBy(lambda row: row.PATIENT) \
-                                                       .mapValues(lambda codes: ", ".join(set(row.CODE for row in codes))) \
-                                                       .values() \
-                                                       .collect() 
 
-    def generate_frequent_1_itemsets(self):
-        """Generate frequent 1-itemsets (k = 1)."""
-        frequent_1_itemsets = set()
-        for patient_codes in self.patient_diseases_baskets:
-            for code in patient_codes.split(", "):
-                frequent_1_itemsets.add(code)
-
-        self.frequent_1_itemsets = list(frequent_1_itemsets)
-
-    def generate_candidate_itemsets(self, frequent_itemsets, k):
-        """Generate candidate itemsets of size k from frequent itemsets of size k-1."""
-        candidates = []
-        for itemset in frequent_itemsets:
-            itemset = itemset.split(", ")
-            for item in itemset:
-                new_itemset = itemset.copy()
-                new_itemset.append(item)
-                new_itemset = sorted(set(new_itemset))
-                if len(new_itemset) == k:
-                    candidates.append(", ".join(new_itemset))
-        return candidates
-
-    def calculate_support(self, data, candidates):
-        """Count the support of each candidate itemset."""
-        support_counts = {}
-        for patient_codes in data: # iterating through the patient codes - baskets 
-            patient_codes = patient_codes.split(", ")
-            for candidate in candidates:
-                candidate_codes = candidate.split(", ")
-                if all(code in patient_codes for code in candidate_codes):
-                    support_counts[candidate] = support_counts.get(candidate, 0) + 1
-
-        return [(k, v) for k, v in support_counts.items() if v >= self.min_support * len(data)]
-
-    def execute_a_priori(self):
-        """Run the A-Priori algorithm to find frequent itemsets."""
+    def calculate_interest(self, k, candidates):
+        """Calculate the interest of each frequent itemset."""
+        freq_items_k = freq_items_broadcast.value[k]
+        freq_items_k1 = freq_items_broadcast.value[1]
         
-        print("\n\n uwu \n\n")
-        self.fetch_data()
-        print("\n\n Data Fetched \n\n")
-        self.organize_data()
-        print("\n\n Data Organized \n\n")
-        self.generate_frequent_1_itemsets()
-        print("\n\n Frequent Items Generated \n\n")
-
-        # Run the A-Priori algorithm
-        self.frequent_itemsets = self.frequent_1_itemsets
-        while self.frequent_itemsets:
-            candidate_itemsets = self.generate_candidate_itemsets(self.frequent_itemsets, self.k)
-            support_counts = self.calculate_support(self.patient_diseases_baskets, candidate_itemsets)
-            self.frequent_itemsets = [item[0] for item in support_counts]
-            self.k += 1
-
-        # Print the frequent itemsets
-        for itemset in self.frequent_itemsets:
-            print(f"Frequent itemset: {itemset}")
+        interest = {}
+        for itemset in candidates:
+            support_itemset = freq_items_k.get(itemset, 0)
+            support_antecedent = freq_items_k1.get(itemset.split(", ")[0], 0)
+            support_consequent = freq_items_k1.get(itemset.split(", ")[1], 0)
             
-        print("\n\n Frequent Items Printed \n\n")
+            interest[itemset] = (support_itemset / (support_antecedent * support_consequent + 1e-10))
+            
+        return interest
+
+    def calculate_lift(self, k, frequent_items_k1, confidence):
+        """Calculate the lift of each confident candidate itemset in the data."""
+        frequent_items_k1 = freq_items_broadcast.value[1]
+        
+        lift = {}
+        for candidate, conf in confidence.items():
+            antecedent = candidate.difference(frequent_items_k1)
+            consequent = candidate.intersection(frequent_items_k1)
+            
+            support_antecedent = frequent_items_k1.get(antecedent.pop(), 0)
+            support_consequent = frequent_items_k1.get(consequent.pop(), 0)
+            
+            lift[candidate] = (conf / (support_antecedent * support_consequent + 1e-10))
+
+        return lift
+
+    def calculate_standardized_lift(self, lift, confidence):
+        """Calculate the standardized lift of each confident candidate itemset."""
+        standardized_lift = {}
+        for candidate, l in lift.items():
+            if candidate in confidence and confidence[candidate] != 0:
+                standardized_lift[candidate] = ((l - 1) / (confidence[candidate] - 1)) ** 0.5
+            else:
+                standardized_lift[candidate] = 0
+                
+        return standardized_lift
+
+    
+def is_valid_candidate(comb, k):
+    """ Check if a combination is a valid candidate by checking if all its subsequences of length 1 to k-1 are frequent."""
+    # Check if all subsequences of length 1 to k-1 are frequent
+    for i in range(1, k):
+        subsequences = combinations(comb, i) # Generate all subsequences of length i from the combination
+        if not all(is_frequent_subsequence(sorted(list(x)), i) for x in subsequences): # Check if all subsequences of length i are frequent
+            return False
+    return True
+
+def is_frequent_subsequence(comb, k):
+    """ Check if a subsequence of length k is frequent."""
+    if k == 1: # For k=1, check if the first element of the subsequence is in the frequent items table
+        return comb[0] in freq_items_broadcast.value[k]
+    return tuple(comb) in freq_items_broadcast.value[k] # For k>1, check if the subsequence is in the frequent items table
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
@@ -98,4 +97,193 @@ if __name__ == '__main__':
         exit(1)
 
     a_priori = A_Priori(sys.argv[1], sys.argv[2])
-    a_priori.execute_a_priori()
+        
+    print("\n\n Starting A-Priori Algorithm \n\n")
+    a_priori.fetch_data(percentage=2) 
+    
+    print("\n\n Data Fetched \n\n")
+    """Preprocess the data by creating a list of disease codes for each patient."""
+    patient_diseases_baskets = a_priori.conditions_rdd.groupBy(lambda row: row.PATIENT) \
+                                                    .mapValues(lambda codes: ", ".join(set(row.CODE for row in codes))) \
+                                                    .values()
+    
+    print("\n\n Example of organized data (first 10 entries):")
+    print(patient_diseases_baskets.take(10))
+
+    patient_diseases_baskets.saveAsTextFile("baskets.txt")
+    print(f"\n\n Organized data saved to: baskets\n")
+
+    baskets = spark_context.textFile("baskets.txt")
+
+    min_support = 1000
+    freq_items_broadcast = spark_context.broadcast({})
+    
+    freq_items_k1 = (baskets.flatMap(lambda line: line.split(", "))
+            .map(lambda condition: (condition, 1))
+            .reduceByKey(lambda a, b: a + b)
+            .filter(lambda entry: entry[1] > min_support)
+            .collectAsMap())
+    
+    print(f"\n\n Candidate itemsets for k=1 (first 10 items):")
+    print(list(freq_items_k1.items())[:10])
+    print("\n\n")
+
+    freq_items_broadcast.value[1] = freq_items_k1
+    freq_items_broadcast = spark_context.broadcast(freq_items_broadcast.value)
+
+    # Create results folder 
+    if not os.path.exists(a_priori.output_directory):
+        os.makedirs(a_priori.output_directory)
+
+    # Save frequent itemsets for current k to a file
+    output_file = f"{a_priori.output_directory}/frequent_itemsets_k_1.txt"
+    with open(output_file, "w") as file:
+        file.write("Top 10 frequent itemsets for k=1:\n")
+        for (itemset, count) in list(freq_items_k1.items())[:10]:
+            file.write(f"{itemset}: {count}\n")
+
+    # Run the A-Priori algorithm up to from 2 to max_k
+    max_k = 3 
+    for k in range(2, max_k+1):
+        # Generate candidate itemsets for k > 1
+        candidate_itemsets = baskets \
+            .flatMap(lambda line: [tuple(sorted(list(c))) for c in combinations(line.split(", "), k) if (is_valid_candidate(c,k))]) \
+            .map(lambda combination: (combination, 1)) \
+            .reduceByKey(lambda a, b: a + b) \
+            .filter(lambda entry: entry[1] > 2) \
+            .sortBy(lambda x: x[1], False) \
+            .collectAsMap()
+
+        print(f"\n\n Candidate itemsets for k={k} (first 10 items):")
+        print(list(candidate_itemsets.items())[:10])
+        print("\n\n")
+
+        freq_items_broadcast.value[k] = candidate_itemsets
+        freq_items_broadcast = spark_context.broadcast(freq_items_broadcast.value)
+
+        # Save frequent itemsets for current k to a file
+        output_file = f"{a_priori.output_directory}/frequent_itemsets_k_{k}.txt"
+        with open(output_file, "w") as file:
+            file.write(f"Top 10 frequent itemsets for k={k}:\n")
+            for (itemset, count) in list(candidate_itemsets.items())[:10]:
+                file.write(f"{itemset}: {count}\n")
+        
+    print("\n\n Frequent Items Generated and saved to file \n\n")
+
+    # Calculate confidence, lift, and standardized lift for each frequent itemset
+    freq_items_k2 = list(freq_items_broadcast.value[2].items())
+    freq_items_k3 = list(freq_items_broadcast.value[3].items())
+
+    # Create RDDs from the lists
+    rdd_k2 = spark_context.parallelize(freq_items_k2)
+    rdd_k3 = spark_context.parallelize(freq_items_k3)
+
+    # Calculate association rules for k=2
+
+    # Support (A,B): transactions containing both itemA and itemB
+    # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA
+
+    # Calculate confidence for k=2, considering both directions
+    confidence_k2 = rdd_k2 \
+        .flatMap(lambda itemset: [
+            ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
+            ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
+        ])
+
+    print("\n\n Calculated Confidence for k=2 \n\n")
+    print(confidence_k2.take(10))  
+
+    # Calculate interest in one transformation
+    interest_k2 = confidence_k2.map(lambda rule: ((rule[0][0], rule[0][1]), (rule[2], 1))).reduceByKey(lambda x, y: (max(x[0], y[0]), x[1])).map(lambda x: (x[0], x[1][0] - x[1][1] / total_transactions))  # Calculating interest
+
+    # Show the results
+    print("\n\n Calculated Interest for k=2 \n\n")
+    print(interest_k2.take(10))
+
+
+    #interest_k2 = standardized_lift_k2 \
+    #    .map(lambda itemset_standardized_lift: (itemset_standardized_lift[0], itemset_standardized_lift[1], itemset_standardized_lift[2], 
+    #                                a_priori.calculate_interest(itemset_standardized_lift[2], itemset_standardized_lift[3])))
+
+    print("\n\n Calculated Interest for k=2 \n\n")
+    print(interest_k2.collect()) 
+
+    # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
+    
+    lift_k2 = confidence_k2 \
+        .map(lambda itemset_confidence: (itemset_confidence[0], itemset_confidence[1], 
+                            a_priori.calculate_lift(spark_context, freq_items_k1, itemset_confidence[2])))
+
+    print("\n\n Calculated Lift for k=2 \n\n")
+    print(lift_k2.collect()) 
+
+    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) measures the strength of the association between itemA and itemB
+    
+    standardized_lift_k2 = lift_k2 \
+        .map(lambda itemset_lift: (itemset_lift[0], itemset_lift[1], 
+                            a_priori.calculate_standardized_lift(itemset_lift[2], itemset_lift[3])))
+
+    print("\n\n Calculated Standardized Lift for k=2 \n\n")
+    print(standardized_lift_k2.collect())  
+
+    # TODO: fix this and apply it for the k = 3 case 
+    # Calculate confidence for k=3   
+    confidence_k3 = rdd_k2.flatMap(lambda itemset: [  # (A,B,C, Prob) (B,C,A, Prob) (C,A, Prob) (C, Prob)
+            ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
+            ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
+        ])
+    
+    print("\n\n Calculated Confidence for k=3 \n\n")
+    print(confidence_k3.collect()) 
+
+    # Calculate lift for k=3
+    lift_k3 = confidence_k3 \
+        .map(lambda itemset_confidence: (itemset_confidence[0], itemset_confidence[1], 
+                            a_priori.calculate_lift(spark_context, freq_items_k2, itemset_confidence[2])))
+
+    print("\n\n Calculated Lift for k=3 \n\n")
+    print(lift_k3.collect())  
+
+    # Calculate standardized lift for k=3
+    standardized_lift_k3 = lift_k3 \
+        .map(lambda itemset_lift: (itemset_lift[0], itemset_lift[1], 
+                            a_priori.calculate_standardized_lift(itemset_lift[2], itemset_lift[3])))
+
+    print("\n\n Calculated Standardized Lift for k=3 \n\n")
+    print(standardized_lift_k3.collect())  
+
+    # Calculate interest for k=3
+    interest_k3 = standardized_lift_k3 \
+        .map(lambda itemset_standardized_lift: (itemset_standardized_lift[0], itemset_standardized_lift[1], itemset_standardized_lift[2], 
+                                    a_priori.calculate_interest(itemset_standardized_lift[2], itemset_standardized_lift[3])))
+
+    print("\n\n Calculated Interest for k=3 \n\n")
+    print(interest_k3.collect())  
+
+     # Filter rules with standardized lift > 0.2
+    filtered_rules_k2 = interest_k2.filter(lambda x: x[2] > 0.2)
+
+    # Convert filtered_rules into the format for writing association rules
+    formatted_rules_k2 = filtered_rules_k2.map(lambda x: (x[0], x[1], (x[2], x[3][0], x[3][1]), x[3][2])).collect()
+
+    # Write association rules to the text file
+    output_file = f"{a_priori.output_directory}/association_rules_k_{2}.txt"
+    with open(output_file, 'w') as file:
+        file.write("Antecedent,Consequent,Confidence,Lift,Standardized Lift,Interest\n")
+        for rule in formatted_rules_k2:
+            file.write(f"{', '.join(rule[0])},{rule[1]},{rule[2][0]},{rule[2][1]},{rule[2][2]},{rule[3]}\n")
+
+    # Filter rules with standardized lift > 0.2
+    filtered_rules_k3 = interest_k3.filter(lambda x: x[2] > 0.2)
+
+    # Convert filtered_rules into the format for writing association rules
+    formatted_rules_k3 = filtered_rules_k3.map(lambda x: (x[0], x[1], (x[2], x[3][0], x[3][1]), x[3][2])).collect()
+
+    # Write association rules to the text file
+    output_file = f"{a_priori.output_directory}/association_rules_k_{3}.txt"
+    with open(output_file, 'w') as file:
+        file.write("Antecedent,Consequent,Confidence,Lift,Standardized Lift,Interest\n")
+        for rule in formatted_rules_k3:
+            file.write(f"{', '.join(rule[0])},{rule[1]},{rule[2][0]},{rule[2][1]},{rule[2][2]},{rule[3]}\n")
+        
+    print("\n\n Association Rules Written \n\n")

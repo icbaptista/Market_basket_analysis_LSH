@@ -1,1 +1,1 @@
-spark-submit frequent_items.py conditions.csv result.txt
+spark-submit frequent_items.py conditions.csv results

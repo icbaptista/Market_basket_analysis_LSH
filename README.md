@@ -13,8 +13,15 @@ The results will be stored in the results folder.
 
 ### Results
 
+For k=3 
+
 ![ex 1.2](./images/img4.png)
+
+For k=2: 
+
 ![ex 1.3](./images/img5.png)
+
+The rest of the results can be found in the /ex1/results folder. 
 
 ## Ex2: LSH
 

@@ -3,9 +3,11 @@
 
 ## Ex 1: Market basket analysis 
 
-### How to run 
+### How to run (exercises 1.1, 1.2, 1.3) 
 
-```spark-submit frequent_items.py conditions.csv results```
+```bash
+spark-submit frequent_items.py conditions.csv results
+```
 
 The results will be stored in the results folder. 
 

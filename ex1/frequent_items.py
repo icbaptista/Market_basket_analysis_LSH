@@ -99,7 +99,7 @@ if __name__ == '__main__':
     a_priori = A_Priori(sys.argv[1], sys.argv[2])
         
     print("\n\n Starting A-Priori Algorithm \n\n")
-    a_priori.fetch_data(percentage=2) 
+    a_priori.fetch_data(percentage=100) 
     
     print("\n\n Data Fetched \n\n")
     """Preprocess the data by creating a list of disease codes for each patient."""
@@ -122,6 +122,7 @@ if __name__ == '__main__':
             .map(lambda condition: (condition, 1))
             .reduceByKey(lambda a, b: a + b)
             .filter(lambda entry: entry[1] > min_support)
+            .sortBy(lambda x: x[1], False)
             .collectAsMap())
     
     print(f"\n\n Candidate itemsets for k=1 (first 10 items):")
@@ -195,14 +196,32 @@ if __name__ == '__main__':
     
     # TODO: fix this and apply it for the k = 3 case 
     # Calculate confidence for k=3   
-    confidence_k3 = rdd_k2.flatMap(lambda itemset: [  # (A,B,C, Prob) (B,C,A, Prob) (C,A, Prob) (C, Prob)
-            ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
-            ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
+    """
+    123
+
+    0 1 > 2          
+    0 2 > 1
+    2 1 > 0
+    
+    0   > 1 2
+    1   > 0 2
+    2 > 0 1
+    
+    """
+    confidence_k3 = rdd_k3.flatMap(lambda itemset: [  
+            ((itemset[0][0], itemset[0][1], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][0],  itemset[0][1]), 1))),
+            ((itemset[0][0], itemset[0][2], itemset[0][1], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][0],  itemset[0][2]), 1))),
+            ((itemset[0][1], itemset[0][2], itemset[0][0], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][1],  itemset[0][2]), 1))),
+            
+            ((itemset[0][0], itemset[0][1], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
+            ((itemset[0][1], itemset[0][0], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1))),
+            ((itemset[0][2], itemset[0][0], itemset[0][1], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][2], 1)))
         ])
     
     
     print("\n\n Calculated Confidence for k=3 \n\n")
-    print(confidence_k3.take(10)) 
+      
+    print(confidence_k3.take(30)) 
 
         
     print("\n\n Association Rules Written \n\n")

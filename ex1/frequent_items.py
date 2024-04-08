@@ -29,91 +29,15 @@ class A_Priori:
         print(f"\n\n Loaded {percentage}% of the data ({sample_rdd.count()} out of {total_count} rows)")
         print(self.conditions_rdd.take(5))
 
-    def calculate_lift(self, k, frequent_items_k1, confidence):
-        """Calculate the lift of each confident candidate itemset in the data."""
-        frequent_items_k1 = freq_items_broadcast.value[1]
-        
-        lift = {}
-        for candidate, conf in confidence.items():
-            antecedent = candidate.difference(frequent_items_k1)
-            consequent = candidate.intersection(frequent_items_k1)
-            
-            support_antecedent = frequent_items_k1.get(antecedent.pop(), 0)
-            support_consequent = frequent_items_k1.get(consequent.pop(), 0)
-            
-            lift[candidate] = (conf / (support_antecedent * support_consequent + 1e-10))
-
-        return lift
-
-    def calculate_standardized_lift(self, lift, confidence):
-        """Calculate the standardized lift of each confident candidate itemset."""
-        standardized_lift = {}
-        for candidate, l in lift.items():
-            if candidate in confidence and confidence[candidate] != 0:
-                standardized_lift[candidate] = ((l - 1) / (confidence[candidate] - 1)) ** 0.5
-            else:
-                standardized_lift[candidate] = 0
-                
-        return standardized_lift
-
     
 def is_valid_candidate(comb, k):
     """ Check if a combination is a valid candidate by checking if all its subsequences of length 1 to k-1 are frequent."""
     # Check if all subsequences of length 1 to k-1 are frequent
     for i in range(1, k):
         subsequences = combinations(comb, i) # Generate all subsequences of length i from the combination
-        if not all(is_frequent_subsequence(sorted(list(x)), i) for x in subsequences): # Check if all subsequences of leng    # Calculate interest for k=2
-    # Interest (A->B): confidence(A->B) - support(B) represents how much more likely itemB is purchased when itemA is purchased
-    interest_k2 = confidence_k2 \
-        .map(lambda rule: (rule[0], rule[1], rule[2] - (freq_items_broadcast.value[1].get(rule[1], 1) / sum(freq_items_broadcast.value[1].values()))))
-    
-    print("\n\n Calculated Interest for k=2 \n\n")
-    print(interest_k2.take(10))
-
-    rules_file.write("\ninterest_k2\n")
-    rules_file.write(str(interest_k2.take(10)))
-
-    # Calculate lift for k=2
-    # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
-    lift_k2 = confidence_k2 \
-        .map(lambda rule: (rule[0], rule[1], rule[2] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
-
-    print("\n\n Calculated Lift for k=2 \n\n")
-    print(lift_k2.take(10))
-    rules_file.write("\nlift_k2\n")
-    rules_file.write(str(lift_k2.take(10)))
-
-    # Calculate standardized lift for k=2
-    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) -> normalized lift
-    max_lift = lift_k2.map(lambda x: x[2]).max() # maximum lift value
-
-    # Calculate standardized with a minimum threshold of 0.2
-    min_standardized_lift = 0.2
-    standardized_lift_k2 = lift_k2 \
-        .map(lambda x: (x[0], x[1], (x[2] - 1) / (max_lift - 1))) \
-        .filter(lambda x: x[2] >= min_standardized_lift) \
-        .sortBy(lambda x: x[2], False)
-    
-    rules_file.write("\nstandardized_lift_k2\n")
-    rules_file.write(str(standardized_lift_k2.take(10)))
-
-    print("\n\n Calculated Lift for k=2 \n\n")
-    print(standardized_lift_k2.take(10))
-
-    # Write association rules to the text file
-    rules_file.write("Association Rules\n")
-    rules_file.write("=========================================\n")
-    rules_file.write("Association Rule	  Std Lift	Lift  Confidence Interest\n")
-    rules_file.write("=========================================\n")
-
-    # Write association rules for k=2
-    for rule in standardized_lift_k2.collect():
-        association_rule = f"{rule[0]} -> {rule[1]}"
-        standardized_lift = rule[2]
-        lift = lift_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
-        confidence = confidence_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
-        interest = interest_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
-        rules_file.write(f"{association_rule}\t{standardized_lift:.4f}\t{lift:.4f}\t{confidence:.4f}\t{interest:.4f}\n")
+        if not all(is_frequent_subsequence(sorted(list(x)), i) for x in subsequences): # Check if all subsequences of length i are frequent
+            return False
+    return True
 
 def is_frequent_subsequence(comb, k):
     """ Check if a subsequence of length k is frequent."""
@@ -213,38 +137,51 @@ if __name__ == '__main__':
     rdd_k2 = spark_context.parallelize(freq_items_k2)
     rdd_k3 = spark_context.parallelize(freq_items_k3)
 
-    output_file = f"{a_priori.output_directory}/association_rules_k_{2}.txt"
-    with open(output_file, "w") as rules_file:
-        # Calculate association rules for k=2
+    # Calculate association rules for k=2
 
-        # Support (A,B): transactions containing both itemA and itemB - already calculated 
-        
-        # Calculate confidence for k=2, considering both directions
-        # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA
-        confidence_k2 = rdd_k2 \
-            .flatMap(lambda itemset: [
-                ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
-                ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
-            ])
-
-        print("\n\n Calculated Confidence for k=2 \n\n")
-        print(confidence_k2.take(10))  
-        rules_file.write("confidence_k2\n")
-        rules_file.write(str(confidence_k2.take(10)))
-        
-        # TODO: fix this and apply it for the k = 3 case 
-        # Calculate confidence for k=3   
-        confidence_k3 = rdd_k2.flatMap(lambda itemset: [  # (A,B,C, Prob) (B,C,A, Prob) (C,A, Prob) (C, Prob)
-                ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
-                ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
-            ])
-        
-        print("\n\n Calculated Confidence for k=3 \n\n")
-        print(confidence_k3.take(10)) 
+    # Support (A,B): transactions containing both itemA and itemB - already calculated 
+    
+    # Calculate confidence for k=2, considering both directions
+    # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA
+    confidence_k2 = rdd_k2 \
+        .flatMap(lambda itemset: [
+            ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
+            ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
+        ])
 
     print("\n\n Calculated Confidence for k=2 \n\n")
     print(confidence_k2.take(10))  
     
+    # Calculate interest for k=2
+    # Interest (A->B): confidence(A->B) - support(B) represents how much more likely itemB is purchased when itemA is purchased
+    interest_k2 = confidence_k2 \
+        .map(lambda rule: (rule[0], rule[1], rule[2] - (freq_items_broadcast.value[1].get(rule[1], 1) / sum(freq_items_broadcast.value[1].values()))))
+    
+    print("\n\n Calculated Interest for k=2 \n\n")
+    print(interest_k2.take(10))
+
+    # Calculate lift for k=2
+    # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
+    lift_k2 = confidence_k2 \
+        .map(lambda rule: (rule[0], rule[1], rule[2] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
+
+    print("\n\n Calculated Lift for k=2 \n\n")
+    print(lift_k2.take(10))
+
+    # Calculate standardized lift for k=2
+    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) -> normalized lift
+    max_lift = lift_k2.map(lambda x: x[2]).max() # maximum lift value
+
+    # Calculate standardized with a minimum threshold of 0.2
+    min_standardized_lift = 0.2
+    standardized_lift_k2 = lift_k2 \
+        .map(lambda x: (x[0], x[1], (x[2] - 1) / (max_lift - 1))) \
+        .filter(lambda x: x[2] >= min_standardized_lift) \
+        .sortBy(lambda x: x[2], False)
+
+    print("\n\n Calculated Lift for k=2 \n\n")
+    print(standardized_lift_k2.take(10))
+
     # TODO: fix this and apply it for the k = 3 case 
     # Calculate confidence for k=3   
     """
@@ -267,66 +204,30 @@ if __name__ == '__main__':
             ((itemset[0][0], itemset[0][1], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
             ((itemset[0][1], itemset[0][0], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1))),
             ((itemset[0][2], itemset[0][0], itemset[0][1], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][2], 1)))
-        ])
-    
+        ])    
     
     print("\n\n Calculated Confidence for k=3 \n\n")
-      
     print(confidence_k3.take(30)) 
-    # Calculate interest for k=2
-    # Interest (A->B): confidence(A->B) - support(B) represents how much more likely itemB is purchased when itemA is purchased
-    interest_k2 = confidence_k2 \
-        .map(lambda rule: (rule[0], rule[1], rule[2] - (freq_items_broadcast.value[1].get(rule[1], 1) / sum(freq_items_broadcast.value[1].values()))))
     
-    print("\n\n Calculated Interest for k=2 \n\n")
-    print(interest_k2.take(10))
 
-    rules_file.write("\ninterest_k2\n")
-    rules_file.write(str(interest_k2.take(10)))
+    output_file = f"{a_priori.output_directory}/association_rules_k_{2}.txt"
+    with open(output_file, "w") as rules_file:    
+        # Write association rules to the text file
+        rules_file.write("Association Rules\n")
+        rules_file.write("=========================================\n")
+        rules_file.write("Association Rule	  Std Lift	Lift  Confidence Interest\n")
+        rules_file.write("=========================================\n")
 
-    # Calculate lift for k=2
-    # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
-    lift_k2 = confidence_k2 \
-        .map(lambda rule: (rule[0], rule[1], rule[2] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
+        # Write association rules for k=2
+        for rule in standardized_lift_k2.collect():
+            association_rule = f"{rule[0]} -> {rule[1]}"
+            standardized_lift = rule[2]
+            lift = lift_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
+            confidence = confidence_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
+            interest = interest_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
+            rules_file.write(f"{association_rule}\t{standardized_lift:.4f}\t{lift:.4f}\t{confidence:.4f}\t{interest:.4f}\n")
 
-    print("\n\n Calculated Lift for k=2 \n\n")
-    print(lift_k2.take(10))
-    rules_file.write("\nlift_k2\n")
-    rules_file.write(str(lift_k2.take(10)))
-
-    # Calculate standardized lift for k=2
-    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) -> normalized lift
-    max_lift = lift_k2.map(lambda x: x[2]).max() # maximum lift value
-
-    # Calculate standardized with a minimum threshold of 0.2
-    min_standardized_lift = 0.2
-    standardized_lift_k2 = lift_k2 \
-        .map(lambda x: (x[0], x[1], (x[2] - 1) / (max_lift - 1))) \
-        .filter(lambda x: x[2] >= min_standardized_lift) \
-        .sortBy(lambda x: x[2], False)
-    
-    rules_file.write("\nstandardized_lift_k2\n")
-    rules_file.write(str(standardized_lift_k2.take(10)))
-
-    print("\n\n Calculated Lift for k=2 \n\n")
-    print(standardized_lift_k2.take(10))
-
-    # Write association rules to the text file
-    rules_file.write("Association Rules\n")
-    rules_file.write("=========================================\n")
-    rules_file.write("Association Rule	  Std Lift	Lift  Confidence Interest\n")
-    rules_file.write("=========================================\n")
-
-    # Write association rules for k=2
-    for rule in standardized_lift_k2.collect():
-        association_rule = f"{rule[0]} -> {rule[1]}"
-        standardized_lift = rule[2]
-        lift = lift_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
-        confidence = confidence_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
-        interest = interest_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
-        rules_file.write(f"{association_rule}\t{standardized_lift:.4f}\t{lift:.4f}\t{confidence:.4f}\t{interest:.4f}\n")
-
-        
-    print("\n\n Association Rules Written \n\n")
+            
+        print("\n\n Association Rules Written \n\n")
 
     spark_session.stop()

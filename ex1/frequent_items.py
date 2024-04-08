@@ -57,7 +57,7 @@ if __name__ == '__main__':
     a_priori = A_Priori(sys.argv[1], sys.argv[2])
         
     print("\n\n Starting A-Priori Algorithm \n\n")
-    a_priori.fetch_data(percentage=100) 
+    a_priori.fetch_data(percentage=10) 
     
     print("\n\n Data Fetched \n\n")
     """Preprocess the data by creating a list of disease codes for each patient."""
@@ -142,7 +142,7 @@ if __name__ == '__main__':
     # Support (A,B): transactions containing both itemA and itemB - already calculated 
     
     # Calculate confidence for k=2, considering both directions
-    # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA
+    # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA (for both A->B and B->A)
     confidence_k2 = rdd_k2 \
         .flatMap(lambda itemset: [
             ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
@@ -182,8 +182,8 @@ if __name__ == '__main__':
     print("\n\n Calculated Lift for k=2 \n\n")
     print(standardized_lift_k2.take(10))
 
-    # TODO: fix this and apply it for the k = 3 case 
     # Calculate confidence for k=3   
+    # Confidence (A,B->C): transactions containing both itemA, itemB, and itemC / transactions containing itemA, itemB (for both A,B->C and A,C->B and B,C->A)
     """
     123
 
@@ -197,18 +197,43 @@ if __name__ == '__main__':
     
     """
     confidence_k3 = rdd_k3.flatMap(lambda itemset: [  
-            ((itemset[0][0], itemset[0][1], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][0],  itemset[0][1]), 1))),
-            ((itemset[0][0], itemset[0][2], itemset[0][1], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][0],  itemset[0][2]), 1))),
-            ((itemset[0][1], itemset[0][2], itemset[0][0], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][1],  itemset[0][2]), 1))),
-            
-            ((itemset[0][0], itemset[0][1], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
-            ((itemset[0][1], itemset[0][0], itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1))),
-            ((itemset[0][2], itemset[0][0], itemset[0][1], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[1].get(itemset[0][2], 1)))
+            (((itemset[0][0], itemset[0][1]), itemset[0][2], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][0],  itemset[0][1]), 1))),
+            (((itemset[0][0], itemset[0][2]), itemset[0][1], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][0],  itemset[0][2]), 1))),
+            (((itemset[0][1], itemset[0][2]), itemset[0][0], freq_items_broadcast.value[3].get((itemset[0][0],  itemset[0][1],  itemset[0][2]), 1) / freq_items_broadcast.value[2].get((itemset[0][1],  itemset[0][2]), 1)))
         ])    
     
     print("\n\n Calculated Confidence for k=3 \n\n")
     print(confidence_k3.take(30)) 
-    
+ 
+    # Calculate interest for k=3
+    # Interest (A,B->C): confidence(A,B->C) - support(C) represents how much more likely itemC is purchased when itemA and itemB are purchased
+    interest_k3 =  confidence_k3 \
+        .map(lambda x: (x[0], x[1], x[2] - (freq_items_broadcast.value[1].get(x[1], 1) / sum(freq_items_broadcast.value[1].values()))))
+
+    print("\n\n Calculated Interest for k=3 \n\n")
+    print(interest_k3.take(5))
+
+    # Calculate lift for k=2
+    # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
+    lift_k3 = confidence_k3 \
+        .map(lambda rule: (rule[0], rule[1], rule[2] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
+
+    print("\n\n Calculated Lift for k=2 \n\n")
+    print(lift_k3.take(10))
+
+    # Calculate standardized lift for k=2
+    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) -> normalized lift
+    max_lift3 = lift_k3.map(lambda x: x[2]).max() # maximum lift value
+
+    # Calculate standardized with a minimum threshold of 0.2
+    min_standardized_lift = 0.2
+    standardized_lift_k3 = lift_k2 \
+        .map(lambda x: (x[0], x[1], (x[2] - 1) / (max_lift3 - 1))) \
+        .filter(lambda x: x[2] >= min_standardized_lift) \
+        .sortBy(lambda x: x[2], False)
+
+    print("\n\n Calculated Lift for k=2 \n\n")
+    print(standardized_lift_k3.take(10))
 
     output_file = f"{a_priori.output_directory}/association_rules_k_{2}.txt"
     with open(output_file, "w") as rules_file:    
@@ -227,7 +252,23 @@ if __name__ == '__main__':
             interest = interest_k2.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
             rules_file.write(f"{association_rule}\t{standardized_lift:.4f}\t{lift:.4f}\t{confidence:.4f}\t{interest:.4f}\n")
 
-            
         print("\n\n Association Rules Written \n\n")
+
+    output_file = f"{a_priori.output_directory}/association_rules_k_{3}.txt"
+    with open(output_file, "w") as rules_file:    
+        # Write association rules to the text file
+        rules_file.write("Association Rules\n")
+        rules_file.write("=========================================\n")
+        rules_file.write("Association Rule	  Std Lift	Lift  Confidence Interest\n")
+        rules_file.write("=========================================\n")
+
+        # Write association rules for k=3
+        for rule in standardized_lift_k3.collect():
+            association_rule = f"{rule[0]} -> {rule[1]}"
+            standardized_lift = rule[2]
+            lift = lift_k3.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
+            confidence = confidence_k3.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
+            interest = interest_k3.filter(lambda x: x[0] == rule[0] and x[1] == rule[1]).map(lambda x: x[2]).collect()[0]
+            rules_file.write(f"{association_rule}\t{standardized_lift:.4f}\t{lift:.4f}\t{confidence:.4f}\t{interest:.4f}\n")
 
     spark_session.stop()

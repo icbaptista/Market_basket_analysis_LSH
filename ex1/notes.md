@@ -124,3 +124,37 @@ candidate_itemsets = baskets \
             .reduceByKey(lambda a, b: a + b) \
             .filter(lambda x: x[1] >= 10) \
             .collectAsMap()
+
+
+confidence_k2 = rdd_k2 \
+            .flatMap(lambda itemset: [
+                ((itemset[0][0], itemset[0][1], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][0], 1))),
+                ((itemset[0][1], itemset[0][0], freq_items_broadcast.value[2].get(itemset[0], 1) / freq_items_broadcast.value[1].get(itemset[0][1], 1)))
+            ])
+
+
+def calculate_lift(self, k, frequent_items_k1, confidence):
+        """Calculate the lift of each confident candidate itemset in the data."""
+        frequent_items_k1 = freq_items_broadcast.value[1]
+        
+        lift = {}
+        for candidate, conf in confidence.items():
+            antecedent = candidate.difference(frequent_items_k1)
+            consequent = candidate.intersection(frequent_items_k1)
+            support_antecedent = frequent_items_k1.get(antecedent.pop(), 0)
+            support_consequent = frequent_items_k1.get(consequent.pop(), 0)
+            
+            lift[candidate] = (conf / (support_antecedent * support_consequent + 1e-10))
+
+        return lift
+
+    def calculate_standardized_lift(self, lift, confidence):
+        """Calculate the standardized lift of each confident candidate itemset."""
+        standardized_lift = {}
+        for candidate, l in lift.items():
+            if candidate in confidence and confidence[candidate] != 0:
+                standardized_lift[candidate] = ((l - 1) / (confidence[candidate] - 1)) ** 0.5
+            else:
+                standardized_lift[candidate] = 0
+                
+        return standardized_lift

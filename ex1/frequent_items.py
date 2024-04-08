@@ -28,7 +28,6 @@ class A_Priori:
         self.conditions_rdd = sample_rdd
         print(f"\n\n Loaded {percentage}% of the data ({sample_rdd.count()} out of {total_count} rows)")
         print(self.conditions_rdd.take(5))
-
     
 def is_valid_candidate(comb, k):
     """ Check if a combination is a valid candidate by checking if all its subsequences of length 1 to k-1 are frequent."""
@@ -46,6 +45,16 @@ def is_frequent_subsequence(comb, k):
     return tuple(comb) in freq_items_broadcast.value[k] # For k>1, check if the subsequence is in the frequent items table
 
 
+def max1(px,py,n_baskets):
+    return max(px+py -1 ,  1/ n_baskets) / (px * py)
+
+# Define a function to calculate the denominator for standardized lift
+def calculate_denominator(p_x, p_y, n_baskets):
+    max_probability = max(p_x, p_y)
+    max_occurrences = max1(p_x, p_y, n_baskets)
+    denominator = (1 / max_probability) - max_occurrences
+    return denominator if denominator != 0 else 1  # Avoid division by zero
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         print("Usage: python script.py <input_file> <output_directory>")
@@ -57,13 +66,16 @@ if __name__ == '__main__':
     a_priori = A_Priori(sys.argv[1], sys.argv[2])
         
     print("\n\n Starting A-Priori Algorithm \n\n")
-    a_priori.fetch_data(percentage=2) 
+    a_priori.fetch_data(percentage=6) 
     
     print("\n\n Data Fetched \n\n")
     """Preprocess the data by creating a list of disease codes for each patient."""
     patient_diseases_baskets = a_priori.conditions_rdd.groupBy(lambda row: row.PATIENT) \
                                                     .mapValues(lambda codes: ", ".join(set(row.CODE for row in codes))) \
                                                     .values()
+    
+    # Count the number of baskets
+    n_baskets = patient_diseases_baskets.count()
     
     print("\n\n Example of organized data (first 10 entries):")
     print(patient_diseases_baskets.take(10))
@@ -139,7 +151,9 @@ if __name__ == '__main__':
 
     # Calculate association rules for k=2
 
-    # Support (A,B): transactions containing both itemA and itemB - already calculated 
+    # The first rule is Support (A,B): 
+    # Meaning of suppport: transactions containing both itemA and itemB 
+    # This rule is already calculated when generating the frequent itemsets 
     
     # Calculate confidence for k=2, considering both directions
     # Confidence (A->B): transactions containing both itemA and itemB / transactions containing itemA (for both A->B and B->A)
@@ -163,21 +177,25 @@ if __name__ == '__main__':
     # Calculate lift for k=2
     # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
     lift_k2 = interest_k2 \
-        .map(lambda rule: (rule[0], rule[1], rule[2], rule[3], rule[3] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
+        .map(lambda rule: (rule[0], rule[1], rule[2], rule[3], rule[2] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
 
     print("\n\n Calculated Lift for k=2 \n\n")
     print(lift_k2.take(10))
 
-    # Calculate standardized lift for k=2
-    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) -> normalized lift
-    max_lift3 = lift_k2.map(lambda x: x[4]).max() # maximum lift value
-
     # Calculate standardized with a minimum threshold of 0.2
-    min_standardized_lift = 0.2
-    standardized_lift_k2 = lift_k2 \
-        .map(lambda x: (x[0], x[1], x[2], x[3], x[4], (x[4] - 1) / (max_lift3 - 1))) \
-        .filter(lambda x: x[5] >= min_standardized_lift) \
-        .sortBy(lambda x: x[5], False)
+    min_standardized_lift = 0.2 
+    standardized_lift_k2 = lift_k2.map(lambda x: (
+        x[0], 
+        x[1], 
+        x[2], 
+        x[3], 
+        x[4], 
+        ((x[4] - max1(freq_items_broadcast.value[1].get(x[0], 1), freq_items_broadcast.value[1].get(x[1], 1), n_baskets)) / calculate_denominator(freq_items_broadcast.value[1].get(x[0], 1), freq_items_broadcast.value[1].get(x[1], 1), n_baskets))
+        if calculate_denominator(freq_items_broadcast.value[2].get(x[0], 1), freq_items_broadcast.value[1].get(x[1], 1), n_baskets) != 0 
+        else 0
+    )) \
+    .filter(lambda x: x[5] >= min_standardized_lift) \
+    .sortBy(lambda x: x[5], False)
 
     print("\n\n Calculated Lift for k=2 \n\n")
     print(standardized_lift_k2.take(10))
@@ -203,21 +221,24 @@ if __name__ == '__main__':
     # Calculate lift for k=2
     # Lift (A->B): confidence(A->B) / support(B) represents how much more likely itemB is purchased when itemA is purchased
     lift_k3 = interest_k3 \
-        .map(lambda rule: (rule[0], rule[1], rule[2], rule[3], rule[3] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
+        .map(lambda rule: (rule[0], rule[1], rule[2], rule[3], rule[2] / freq_items_broadcast.value[1].get(rule[0][1], 1)))
 
     print("\n\n Calculated Lift for k=2 \n\n")
     print(lift_k3.take(10))
 
-    # Calculate standardized lift for k=2
-    # Standardized Lift (A->B): (lift(A->B) - 1) / (confidence(A->B) - 1) -> normalized lift
-    max_lift3 = lift_k3.map(lambda x: x[4]).max() # maximum lift value
-
-    # Calculate standardized with a minimum threshold of 0.2
-    min_standardized_lift = 0.2
-    standardized_lift_k3 = lift_k3 \
-        .map(lambda x: (x[0], x[1], x[2], x[3], x[4], (x[4] - 1) / (max_lift3 - 1))) \
-        .filter(lambda x: x[5] >= min_standardized_lift) \
-        .sortBy(lambda x: x[5], False)
+    # Calculate standardized lift for k=3
+    standardized_lift_k3 = lift_k3.map(lambda x: (
+        x[0], 
+        x[1], 
+        x[2], 
+        x[3], 
+        x[4], 
+        ((x[4] - max1(freq_items_broadcast.value[2].get(x[0], 1), freq_items_broadcast.value[1].get(x[1], 1), n_baskets)) / calculate_denominator(freq_items_broadcast.value[2].get(x[0], 1), freq_items_broadcast.value[1].get(x[1], 1), n_baskets))
+        if calculate_denominator(freq_items_broadcast.value[2].get(x[0], 1), freq_items_broadcast.value[1].get(x[1], 1), n_baskets) != 0 
+        else 0
+    )) \
+    .filter(lambda x: x[5] >= min_standardized_lift) \
+    .sortBy(lambda x: x[5], False)
 
     print("\n\n Calculated Lift for k=2 \n\n")
     print(standardized_lift_k3.take(10))

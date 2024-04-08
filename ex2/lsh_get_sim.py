@@ -208,12 +208,16 @@ def find_similar_articles(article):
 
     return similar_articles
 
-
+print("\n\n")
 for i in range(0, 100):
     results = find_similar_articles(articles[i])
     if len(results) > 0:
         print("article being searched: ", articles[i])
         print("\n\n")
-        print("similar articles found: ", find_similar_articles(articles[i]))
+        print("similar articles found: ")
+        print("\n")
+        for result in results: 
+            print("-> ", result)
+            print("")
         print("\n\n")
  

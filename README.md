@@ -11,6 +11,11 @@ spark-submit frequent_items.py conditions.csv results
 
 The results will be stored in the results folder. 
 
+### Results
+
+![ex 1.2](./images/img4.png)
+![ex 1.3](./images/img5.png)
+
 ## Ex2: LSH
 
 ### How to Run 
@@ -35,4 +40,4 @@ $python3 run_lsh.py -b 20 -r 10
 
 ![ex 2.2](./images/img3.png)
 
-  
+ 

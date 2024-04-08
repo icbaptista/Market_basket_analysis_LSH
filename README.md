@@ -5,7 +5,7 @@
 
 ### How to run 
 
-spark-submit frequent_items.py conditions.csv results
+``spark-submit frequent_items.py conditions.csv results``
 
 The results will be stored in the results folder. 
 

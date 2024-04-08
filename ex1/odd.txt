@@ -1,0 +1,19 @@
+Indeed, the results you provided for confidence, interest, lift, and standardized lift seem odd. Let's analyze each of them:
+
+    Confidence (confidence_k2):
+        Confidence values represent the probability of finding item B in a transaction given that item A is already present in the transaction. These values should typically range between 0 and 1.
+        However, the confidence values in your results are unusually low, with some values even below 0. This suggests that there might be an issue with the calculation.
+
+    Interest (interest_k2):
+        Interest measures the interestingness of association rules. Normally, interest values should also range between 0 and 1.
+        In your results, all interest values are 0, which is highly unusual. This indicates that there might be a problem with the interest calculation.
+
+    Lift (lift_k2):
+        Lift measures how much more likely item B is to be bought when item A is bought, compared to when item A is not bought.
+        The lift values in your results seem to be similar to confidence values, which is not typical. Lift values should generally be greater than or equal to 1.
+
+    Standardized Lift (standardized_lift_k2):
+        Standardized lift adjusts the lift value to account for randomness and provides a standardized measure of lift.
+        The standardized lift values also seem unusual, with some values not falling within the typical range.
+
+Given these observations, it's likely that there's an issue with the calculation or the input data. I would recommend double-checking the implementation of these calculations and verifying the input data to identify any potential errors. Additionally, reviewing the logic for each calculation step might help in diagnosing the problem.

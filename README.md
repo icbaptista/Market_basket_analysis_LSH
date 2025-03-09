@@ -1,8 +1,27 @@
 # MDLE_Frequent_items_association_rules
 
 
+## Ex 1: Market basket analysis 
 
+### How to run (exercises 1.1, 1.2, 1.3) 
 
+```bash
+spark-submit frequent_items.py conditions.csv results
+```
+
+The results will be stored in the results folder. 
+
+### Results
+
+For k=3 
+
+![ex 1.2](./images/img4.png)
+
+For k=2: 
+
+![ex 1.3](./images/img5.png)
+
+The rest of the results can be found in the /ex1/results folder. 
 
 ## Ex2: LSH
 
@@ -28,4 +47,4 @@ $python3 run_lsh.py -b 20 -r 10
 
 ![ex 2.2](./images/img3.png)
 
-  
+ 

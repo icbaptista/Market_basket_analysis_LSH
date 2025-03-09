@@ -15,7 +15,6 @@ parser.add_argument('-r', type=int, required=True, help='The value for r')
 # Parse the arguments
 args = parser.parse_args()
  
- 
 class LSH:
     buckets = []
     counter = 0
@@ -125,7 +124,6 @@ for shingle_set in shingles:
 shingles_1hot = np.stack(shingles_1hot) 
 
 
-
 # Min Hashing
 print("Min Hashing...")
 def minhash_arr(vocab: dict, resolution: int):
@@ -203,9 +201,6 @@ def find_similar_articles(article):
 
             if sim < 1.0 and sim > 0.85:
                 similar_articles.append(other_article)
-            
-             
-
     return similar_articles
 
 print("\n\n")
